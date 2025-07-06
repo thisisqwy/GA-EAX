@@ -6,7 +6,7 @@ import time
 start_time = time.time()
 
 
-class eax_tabu():
+class eax_rand():
     def __init__(self,num_pop,num_city,noff,data):
         self.num_pop = num_pop
         self.num_city = num_city
@@ -310,7 +310,7 @@ def read_tsp(path):
 data = read_tsp(r'D:\Users\qwy\Desktop\tsp算例\st70.tsp\st70.tsp')
 data = np.array(data)
 data = data[:, 1:]
-model=eax_tabu(num_pop=300,num_city=data.shape[0],noff=50,data=data.copy())
+model=eax_rand(num_pop=300,num_city=data.shape[0],noff=50,data=data.copy())
 model.main()
 end_time = time.time()
 print("代码运行时间：", end_time - start_time, "秒")
