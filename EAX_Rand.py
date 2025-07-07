@@ -30,24 +30,6 @@ class eax_rand():
         pop=[]
         for i in range(self.num_pop):
             pop.append(np.array(random.sample(range(self.num_city),self.num_city))) #用数组表示路径，更高效。
-        for i in range(self.num_pop):#对初试解的每个解都用2-opt算法优化到无法再优化的地步。
-            improved = True
-            best=pop[i].copy()
-            best_dist = self.path_length(best)
-            while improved:
-                improved = False
-                for j in range(1,self.num_city-1):
-                    for k in range(j+1,self.num_city):
-                        new = self.dis_mat[best[j-1],best[k]]+self.dis_mat[best[j],best[(k+1)%self.num_city]]
-                        old = self.dis_mat[best[j-1],best[j]]+self.dis_mat[best[k],best[(k+1)%self.num_city]]
-                        if new < old:
-                            best[j:k + 1] = best[j:k + 1][::-1]  # 如果k+1=num_city，那么best[k+1:]就会等于一个空列表。
-                            best_dist = best_dist - old + new
-                            improved = True
-                            break  # 退出内层循环
-                    if improved:
-                        break  # 退出外层循环
-            pop[i]=best.copy()
         return pop
     #计算单条路径的长度
     def path_length(self,path):
@@ -164,24 +146,19 @@ class eax_rand():
         while len(subtours) > 1:
             subtours.sort(key=len)
             U = subtours[0]
-            best = float('inf')
-            best_result = None
+            best_delta = float('inf')
+            best_modify = None
             for i in range(1, len(subtours)):
                 V = subtours[i]
-                reconnect = self.reconnect_two(U, V)
-                if reconnect is None:
+                edges,delta = self.reconnect_two(U, V)
+                if edges is None:
                     continue
-                (del_u, del_v), (add_u, add_v) = reconnect
-                delta = (self.dis_mat[list(add_u)[0]][list(add_u)[1]] + self.dis_mat[list(add_v)[0]][list(add_v)[1]]) - \
-                        (self.dis_mat[list(del_u)[0]][list(del_u)[1]] + self.dis_mat[list(del_v)[0]][list(del_v)[1]])
-                if delta < best:
-                    best = delta
-                    best_result = (i, reconnect)
-
-            if best_result is None:
+                if delta <best_delta:
+                    best_delta = delta
+                    best_modify=(i,edges)
+            if best_modify is None:
                 break
-            idx, ((del_u, del_v), (add_u, add_v)) = best_result
-            V = subtours[idx]
+            idx, ((del_u, del_v), (add_u, add_v))=best_modify
             for e in (del_u, del_v):
                 if e in EC:
                     EC.remove(e)
@@ -198,40 +175,40 @@ class eax_rand():
             adj[v].append(u)
         visited = set()
         tours = []
-        for node in adj: #在最终的中间解中，每个顶点代表的城市都只存在于一个subtour里，所以node被遍历到了就会被visited
-            if node in visited:
+        for start in adj: #在最终的中间解中，每个顶点代表的城市都只存在于一个subtour里，所以node被遍历到了就会被visited
+            if start in visited:
                 continue
             tour = []
-            curr, prev = node, None
+            curr_node,prev_node =start, None
             while True:
-                tour.append(curr)
-                visited.add(curr)
-                nbrs = [w for w in adj[curr] if w != prev]
-                if not nbrs:#对于那种在subtours中只有两个点的subtour，这里的if not nbrs是必要的。
+                tour.append(curr_node)
+                visited.add(curr_node)
+                next_nodes = [w for w in adj[curr_node] if w !=prev_node]
+                if not next_nodes:#对于那种在subtours中只有两个点的subtour，这里的if not next_nodes是必要的。
                     break
-                prev, curr = curr, nbrs[0]#这时候nbrs肯定有两个点，分别代表curr这个点两个不同方向的临近点，随便取一个即可。
-                if curr == node:
+                prev_node, curr_node=curr_node, next_nodes[0]#这时候nbrs肯定有两个点，分别代表curr这个点两个不同方向的临近点，随便取一个即可。
+                if curr_node == start:
                     break
             tours.append(tour)
         return tours
-    def reconnect_two(self,tour_u, tour_v):
+    def reconnect_two(self,tour_1, tour_2):
         """按最小增量策略合并两个子巡回，返回要删除和添加的边对。"""
         best_delta = float('inf')
         best = None
-        for i in range(len(tour_u)):
-            u1, u2 = tour_u[i], tour_u[(i + 1) % len(tour_u)]
-            w_u = self.dis_mat[u1][u2]
-            for j in range(len(tour_v)):
-                v1, v2 = tour_v[j], tour_v[(j + 1) % len(tour_v)]
-                w_v = self.dis_mat[v1][v2]
-                d_u2_v1 = self.dis_mat[u2][v1]
-                d_u1_v2 = self.dis_mat[u1][v2]
-                delta = -w_u - w_v + d_u2_v1 + d_u1_v2
+        for i in range(len(tour_1)):
+            v1, v2 = tour_1[i], tour_1[(i + 1) % len(tour_1)]
+            d_v1v2 = self.dis_mat[v1][v2]
+            for j in range(len(tour_2)):
+                v3, v4 = tour_2[j], tour_2[(j + 1) % len(tour_2)]
+                d_v3v4 = self.dis_mat[v3][v4]
+                d_v1v3 = self.dis_mat[v1][v3]
+                d_v2v4 = self.dis_mat[v2][v4]
+                delta =d_v1v3+d_v2v4-d_v1v2-d_v3v4
                 if delta < best_delta:
                     best_delta = delta
-                    best = ((frozenset({u1, u2}), frozenset({v1, v2})),
-                            (frozenset({u2, v1}), frozenset({u1, v2})))
-        return best
+                    best = ((frozenset({v1, v2}), frozenset({v3, v4})),
+                            (frozenset({v1, v3}), frozenset({v2, v4})))
+        return best,best_delta
     def main(self):
         counter=0
         sort_index = np.argsort(-self.fitness).copy()
@@ -285,6 +262,10 @@ class eax_rand():
                 best_fitness=new_best_fitness
             print(f"当前的最优路径为:{best_path}")
             print('当前的最短路径长度为：%.2f' % (1 / best_fitness))
+            end_time = time.time()
+            print("代码运行时间：", end_time - start_time, "秒")
+        print(f"最终的最优路径为:{best_path}")
+        print('最终的最短路径长度为：%.2f' % (1 / best_fitness))
 # 读取数据
 def read_tsp(path):
     lines = open(path, 'r').readlines()
@@ -310,7 +291,7 @@ def read_tsp(path):
 data = read_tsp(r'D:\Users\qwy\Desktop\tsp算例\st70.tsp\st70.tsp')
 data = np.array(data)
 data = data[:, 1:]
-model=eax_rand(num_pop=300,num_city=data.shape[0],noff=50,data=data.copy())
+model=eax_rand(num_pop=100,num_city=data.shape[0],noff=50,data=data.copy())
 model.main()
 end_time = time.time()
 print("代码运行时间：", end_time - start_time, "秒")
